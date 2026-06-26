@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+.pytest_cache/
+.ruff_cache/
+
+# Virtuelle Umgebungen
+.venv
+
+# Umgebungsvariablen / Secrets
+.env
+
+# Daten (TEP-Parquet werden nicht eingecheckt)
+data/*.parquet
+*.RData
+
+# Generierte Artefakte
+reports/*.png
+reports/*.csv

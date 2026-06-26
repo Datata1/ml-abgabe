@@ -1,0 +1,87 @@
+{
+  "version": "1",
+  "metadata": {
+    "marimo_version": "0.23.10",
+    "script_metadata_hash": null
+  },
+  "cells": [
+    {
+      "id": "Hbol",
+      "code_hash": "a19285cfba1836e3546c3fbf9ccc3828",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h1 id=\"automl-fur-anomalieerkennung\">AutoML f\u00fcr Anomalieerkennung</h1>\n<h2 id=\"wie-wahlt-man-ohne-labels-das-passende-modell\">Wie w\u00e4hlt man <strong>ohne Labels</strong> das passende Modell?</h2>\n<span class=\"paragraph\">Drei Stufen am Tennessee-Eastman-Prozess (TEP):</span>\n<ol>\n<li><strong>naiv</strong> \u2014 ein fixer pyOD-Detektor (Default)</li>\n<li><strong>statistisch</strong> \u2014 Konsens / Model-Centrality (label-frei)</li>\n<li><strong>wissensbasiert</strong> \u2014 LLM-gest\u00fctzte Auswahl (PyOD-2-Idee)</li>\n</ol>\n<span class=\"paragraph\">Als Obergrenze dient die <strong>Oracle</strong>-Auswahl (mit Labels \u2014 in echt nicht verf\u00fcgbar).</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "MJUe",
+      "code_hash": "20b2f518c4e3f257ff9036d8de67e427",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "application/json": "{\"ecod\": \"text/plain+float:0.7673589700520833\", \"iforest\": \"text/plain+float:0.7979227912326388\", \"ocsvm\": \"text/plain+float:0.8461598582175925\", \"pca\": \"text/plain+float:0.8451226195023149\"}"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "vblA",
+      "code_hash": "6e896879cc1d998bd7f0ac4f6437984b",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h3 id=\"stufe-1-naiv\">Stufe 1 \u2014 naiv</h3>\n<span class=\"paragraph\">Fixer Default <strong>ecod</strong>: ROC-AUC = <strong>0.767</strong>. Ohne Labels wei\u00df man aber nicht, ob das eine gute Wahl ist \u2014 die Detektoren streuen:</span>\n<ul>\n<li><code>ecod</code>: 0.767</li>\n<li><code>iforest</code>: 0.798</li>\n<li><code>ocsvm</code>: 0.846</li>\n<li><code>pca</code>: 0.845</li>\n</ul></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "bkHC",
+      "code_hash": "447cdea032aa0dda64b18c436fc1d2f9",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h3 id=\"stufe-2-statistisch-konsens\">Stufe 2 \u2014 statistisch (Konsens)</h3>\n<span class=\"paragraph\">Label-freie Auswahl w\u00e4hlt <strong>pca</strong> (ROC-AUC = <strong>0.845</strong>) \u2014 ganz ohne Labels.</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "lEQa",
+      "code_hash": "a0a18a05b6ea8655ff7b31ec223f19ab",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h3 id=\"stufe-3-wissensbasiert-llm\">Stufe 3 \u2014 wissensbasiert (LLM)</h3>\n<span class=\"paragraph\">Das Sprachmodell w\u00e4hlt <strong>pca</strong> (ROC-AUC = <strong>0.845</strong>).</span>\n<span class=\"paragraph\"><strong>Datensatz-Profil:</strong> ['hoch-dimensional', 'stark gekoppelte Features (ausgepr\u00e4gte lineare Struktur)', 'schwere Tails / ausgepr\u00e4gte Schiefe']</span>\n<span class=\"paragraph\"><strong>Begr\u00fcndung:</strong> Ausgepr\u00e4gte lineare Struktur und stark gekoppelte Features sprechen f\u00fcr ein Verfahren, das die Korrelationsstruktur explizit modelliert.</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "PKri",
+      "code_hash": "b46f73e3dd23c789c2561dc5de1aa805",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h3 id=\"obergrenze-oracle-mit-labels\">Obergrenze \u2014 Oracle (mit Labels)</h3>\n<span class=\"paragraph\">Mit Labels w\u00e4re <strong>pca</strong> optimal (ROC-AUC = <strong>0.845</strong>).</span>\n<span class=\"paragraph\"><strong>Kernaussage:</strong> Die label-freien Strategien kommen sehr nah an diese Obergrenze heran.</span></span>"
+          }
+        }
+      ],
+      "console": []
+    }
+  ]
+}

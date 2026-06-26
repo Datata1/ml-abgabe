@@ -1,0 +1,51 @@
+[project]
+name = "automl-ad-abgabe"
+version = "1.0.0"
+description = "AutoML für Anomalieerkennung: Modellauswahl ohne Labels (naiv → Consensus → LLM) auf dem Tennessee-Eastman-Prozess"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "numpy>=2.4",
+    "pandas>=2.2",
+    "scikit-learn>=1.5",
+    "pyod>=3.6",
+    "numba>=0.61",   # explizit: verhindert Rückfall auf uraltes numba (kein py3.13)
+    "optuna>=4.0",
+    "matplotlib>=3.9",
+    "pyarrow>=17.0",
+    "scipy>=1.13",
+    "marimo>=0.23",
+    "anthropic>=0.40",
+    "httpx>=0.27",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["automl_ad"]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+    "ruff>=0.6",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "data: benötigt lokale TEP-Parquet-Dateien unter data/ (sonst übersprungen)",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+exclude = ["notebooks", ".venv"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+ignore = ["E501"]
+
+[tool.ruff.lint.per-file-ignores]
+"**/__init__.py" = ["F401"]
