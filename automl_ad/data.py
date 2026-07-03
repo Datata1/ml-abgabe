@@ -59,6 +59,7 @@ class Split:
     X_test: np.ndarray                # gemischt (normal + Fehler), skaliert
     y_test: np.ndarray                # punktweises Label (1=anomal, Onset-korrekt)
     meta_test: pd.DataFrame           # faultNumber/simulationRun/sample (für Detection-Delay etc.)
+    meta_train: pd.DataFrame          # dito für die Trainings-Gutdaten (für pro-Run-Fensterung, ts.py)
     scaler: StandardScaler
     faults: list[int]                 # im Test enthaltene Fehlertypen
     train_runs: list[int]             # Gutdaten-Läufe im Training (für disjunkte Validierung)
@@ -108,9 +109,10 @@ def load_split(
 
     y_test = make_labels(df_test, onset=config.ONSET_TESTING)
     meta_test = df_test[config.META_COLS].reset_index(drop=True)
+    meta_train = df_train[config.META_COLS].reset_index(drop=True)
 
     return Split(
-        X_train_good, X_test, y_test, meta_test, scaler,
+        X_train_good, X_test, y_test, meta_test, meta_train, scaler,
         faults, train_runs, test_good_runs, test_fault_runs,
     )
 

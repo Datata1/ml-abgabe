@@ -1,168 +1,84 @@
-"""End-to-End-Experiment: Modellauswahl ohne Labels auf dem Tennessee-Eastman-Prozess.
+"""Reproduzierbare Zahlen (zeitbewusst, ALLE 20 Fehlertypen): Baselines, Konsens A/B, Oracle
+→ ``reports/results.csv`` + differenzierte Pro-Fehler-Auswertung → ``reports/results_per_fault.csv``.
 
-Vergleicht die drei label-freien Auswahlstrategien gegen die Oracle-Obergrenze:
+Für die **Grafiken** (Folien) siehe ``scripts/make_figures.py`` / ``make figures``. Alle ROC/AUC sind
+**nur zur Illustration** (im echten unüberwachten Betrieb nicht verfügbar).
 
-  naiv (fixer Default)  ·  statistisch (Konsens)  ·  pyOD ADEngine  ·  Oracle (Labels)
-
-Stufe 3 ist die echte, library-native AutoML-AD (``pyod.utils.ad_engine.ADEngine``):
-benchmark-gestützte Detektorwahl + Consensus + label-freie Qualitätsdiagnostik. Unsere
-selbstgebaute LLM-Variante (``automl_ad/llm.py``) wird nur noch als „unter der Haube"-Randnotiz
-gezeigt.
-
-Ausgabe: ``reports/results.csv`` + ``reports/auswahl_vergleich.png``.
-
-Aufruf:  uv run python scripts/run_experiment.py
+Start:  uv run python scripts/run_experiment.py
 """
 
 from __future__ import annotations
 
-import sys
+import csv
 
-import numpy as np
-import pandas as pd
 from sklearn.metrics import roc_auc_score
 
 from automl_ad import config
-from automl_ad.data import load_split, load_validation
-from automl_ad.detectors import make_detector
-from automl_ad.plots import selection_comparison
-from automl_ad.pyod_engine import benchmark_ranking, run_engine, run_engine_llm_routed
+from automl_ad.data import load_split
 from automl_ad.selection import (
     DEFAULT_CANDIDATES,
-    select_internal,
-    select_llm,
-    select_oracle,
+    agreement,
+    consensus_centrality,
+    ensemble_consensus,
+    oracle_best,
+    per_fault_breakdown,
 )
+from automl_ad.ts import windowed_candidate_scores
 
-NAIVE_DETECTOR = "ecod"  # willkürlich gewählter, fixer Default (Stufe 1)
-ENGINE_MAX_ROWS = 8000   # ADEngine-Subsample (Tempo/Speicher; z. B. KNN skaliert quadratisch)
+NAIVE = "ecod"
 
 
-def _data_available() -> bool:
-    return all(
-        p.exists()
-        for p in (
-            config.FAULT_FREE_TRAINING,
-            config.FAULT_FREE_TESTING,
-            config.FAULTY_TESTING,
-        )
+def main() -> None:
+    split = load_split(**config.SPLIT_KW)
+    y = split.y_test
+
+    def auc(scores):
+        return float(roc_auc_score(y, scores))
+
+    # Zeitbewusste Detektor-Scores (einmal), darauf alle label-freien Strategien.
+    tw = windowed_candidate_scores(
+        DEFAULT_CANDIDATES, split,
+        window_size=config.WINDOW, step=config.STEP, aggregation=config.AGGREGATION,
     )
+    best_a, _ = consensus_centrality(tw)
+    ens = ensemble_consensus(tw, "average")
+    oracle_pick, oracle_aucs = oracle_best(tw, y)
 
+    strategies = {
+        "naiv (fix ecod, zeitbewusst)": (NAIVE, auc(tw[NAIVE])),  # blinde Einzelwahl, gefenstert
+        "Konsens A": (best_a, auc(tw[best_a])),            # zentralstes Modell (label-frei)
+        "Konsens B (avg)": ("ensemble", auc(ens)),         # Ensemble-Konsens als Vorhersage
+        "Oracle (Referenz)": (oracle_pick, oracle_aucs[oracle_pick]),
+    }
 
-def main() -> int:
-    if not _data_available():
-        print(
-            "TEP-Parquet-Dateien fehlen unter data/.\n"
-            "Bitte die vier Dateien (TEP_FaultFree_Training/Testing, TEP_Faulty_Training/Testing)\n"
-            "wie in der README beschrieben nach data/ legen.",
-            file=sys.stderr,
-        )
-        return 1
-
-    print("Lade TEP-Split ...")
-    split = load_split()
-
-    # Pro Kandidat: einmal auf Gutdaten fitten, Test-Scores -> Test-ROC-AUC (gemeinsame Basis).
-    print("Berechne Test-ROC-AUC je Detektor ...")
-    test_auc: dict[str, float] = {}
-    for name, hp in DEFAULT_CANDIDATES:
-        det = make_detector(name, **hp).fit(split.X_train_good)
-        test_auc[name] = float(roc_auc_score(split.y_test, det.decision_function(split.X_test)))
-    for name, auc in sorted(test_auc.items(), key=lambda kv: kv[1]):
-        print(f"  {name:8s} ROC-AUC={auc:.3f}")
-
-    strategies: dict[str, tuple[str, float]] = {}
-    reasons: dict[str, str] = {}
-
-    # Stufe 1 — naiv: fixer Default.
-    strategies["naiv\n(fixer Default)"] = (NAIVE_DETECTOR, test_auc[NAIVE_DETECTOR])
-
-    # Stufe 2 — statistisch: Konsens (label-frei, auf den Testdaten).
-    pick_internal, _ = select_internal(DEFAULT_CANDIDATES, split.X_train_good, split.X_test)
-    strategies["statistisch\n(Konsens)"] = (pick_internal, test_auc[pick_internal])
-
-    # Stufe 3 — pyOD ADEngine (echte, library-native AutoML-AD; label-frei).
-    # ADEngine fittet+bewertet im Consensus-Workflow auf demselben X; daher auf einem
-    # Subsample der Testdaten. Die Bewertung macht ADEngine selbst (validate()).
-    print("\nBenchmark-Rangliste (pyOD-Wissensbasis, ADBench):")
-    for name, rank in benchmark_ranking():
-        print(f"  {name:8s} rank={rank}")
-    rng = np.random.default_rng(config.RANDOM_SEED)
-    idx = np.sort(rng.choice(len(split.X_test), size=min(ENGINE_MAX_ROWS, len(split.X_test)),
-                             replace=False))
-    X_sub, y_sub = split.X_test[idx], split.y_test[idx]
-    print(f"\nStufe 3 — pyOD ADEngine (Subsample {len(idx)} Punkte) ...")
-    out = run_engine(X_sub, y_sub)
-    val = out["validation"]
-    engine_auc = val["consensus_roc_auc"]
-    engine_pick = out["best_detector"] or "Consensus"
-    strategies["pyOD ADEngine\n(Consensus)"] = (str(engine_pick), engine_auc)
-    reasons[str(engine_pick)] = (
-        f"benchmark-gestützt: {', '.join(out['detectors'])}; "
-        f"label-freie Qualität {out['quality_verdict']} ({out['quality_overall']:.2f}); "
-        f"consensus_helped={val['consensus_helped']}"
-    )
-    print(f"  gewählte Detektoren: {', '.join(out['detectors'])}")
-    print(f"  bester laut Consensus: {engine_pick} | Übereinstimmung: {out['agreement']:.2f}")
-    print(f"  label-freie Qualität: {out['quality_verdict']} ({out['quality_overall']:.2f})")
-    print(f"  ADEngine-Validierung: Consensus-ROC-AUC={engine_auc:.3f}, "
-          f"bester Detektor={val['best_detector_roc_auc']}, consensus_helped={val['consensus_helped']}")
-
-    # Bonus — Brücke „unter der Haube" → „echt": UNSER LLM steuert pyODs Detektorwahl
-    # (plan_detection(llm_client=...)). LLM wählt aus pyODs 61-Detektoren-Wissensbasis.
-    try:
-        routed = run_engine_llm_routed(split.X_train_good, X_sub)
-        routed_auc = float(roc_auc_score(y_sub, routed["scores_test"]))
-        strategies["ADEngine + LLM\n(LLM-Routing)"] = (str(routed["detector"]), routed_auc)
-        reasons[str(routed["detector"])] = (
-            f"LLM-geroutet (pyOD-KB): + {', '.join(routed['alternatives'])}; {routed['reason']}"
-        )
-        print(f"\nBonus — ADEngine mit LLM-Routing: {routed['detector']} "
-              f"(+ {', '.join(routed['alternatives'])}) | ROC-AUC={routed_auc:.3f}")
-        print(f"  LLM-Begründung: {routed['reason']}")
-    except Exception as exc:  # noqa: BLE001 - optionaler Bonus: nie den Gesamtlauf abbrechen
-        print(f"\nBonus (LLM-Routing) übersprungen: {exc}", file=sys.stderr)
-
-    # Randnotiz „unter der Haube": unsere vereinfachte LLM-Eigenbauvariante (4 Detektoren).
-    try:
-        pick_llm, info = select_llm(DEFAULT_CANDIDATES, split.X_train_good, X_sub)
-        print(f"\n[unter der Haube] LLM-Eigenbau (4 Detektoren) wählt: {pick_llm}"
-              f"{'  [Fallback]' if info['fallback'] else ''} — {info['reason']}")
-    except RuntimeError as exc:
-        print(f"\n[unter der Haube] LLM-Eigenbau übersprungen (kein Provider): {exc}",
-              file=sys.stderr)
-
-    # Obergrenze — Oracle: Auswahl auf gelabeltem Validierungsset, Bewertung auf Test.
-    X_val, y_val, _ = load_validation(split)
-    pick_oracle, _ = select_oracle(DEFAULT_CANDIDATES, split.X_train_good, X_val, y_val)
-    oracle_auc = test_auc[pick_oracle]
-    print(f"\nOracle-Auswahl (mit Labels): {pick_oracle}  ROC-AUC={oracle_auc:.3f}")
-
-    # --- Ausgabe: Tabelle + Plot ---------------------------------------------------
     config.REPORTS_DIR.mkdir(parents=True, exist_ok=True)
-    rows = [
-        {
-            "strategie": label.replace("\n", " "),
-            "gewaehlter_detektor": pick,
-            "roc_auc": auc,
-            "begruendung": reasons.get(pick, ""),
-        }
-        for label, (pick, auc) in strategies.items()
-    ]
-    rows.append(
-        {"strategie": "oracle (Obergrenze)", "gewaehlter_detektor": pick_oracle,
-         "roc_auc": oracle_auc, "begruendung": "Auswahl mit Labels"}
-    )
-    df = pd.DataFrame(rows)
-    csv_path = config.REPORTS_DIR / "results.csv"
-    df.to_csv(csv_path, index=False)
+    with (config.REPORTS_DIR / "results.csv").open("w", newline="") as fh:
+        w = csv.writer(fh)
+        w.writerow(["strategie", "gewaehlter_detektor", "roc_auc_illustrativ"])
+        for label, (pick, val) in strategies.items():
+            w.writerow([label, pick, f"{val:.4f}"])
 
-    selection_comparison(strategies, oracle_auc=oracle_auc, save_as="auswahl_vergleich.png")
+    # Differenzierte Auswertung: wie verändert sich das Ergebnis mit der Fehlerart?
+    fault_no = split.meta_test["faultNumber"].to_numpy()
+    bd_b = per_fault_breakdown(tw, ens, y, fault_no)
+    bd_a = per_fault_breakdown(tw, tw[best_a], y, fault_no)
+    with (config.REPORTS_DIR / "results_per_fault.csv").open("w", newline="") as fh:
+        w = csv.writer(fh)
+        w.writerow(["fault", "schwer", "roc_auc_konsens_a", "roc_auc_konsens_b", "agreement"])
+        for f in sorted(bd_b):
+            w.writerow([
+                f, int(f in config.HARD_FAULTS),
+                f"{bd_a[f]['roc_auc']:.4f}", f"{bd_b[f]['roc_auc']:.4f}",
+                f"{bd_b[f]['agreement']:.4f}",
+            ])
 
-    print(f"\nGeschrieben:\n  {csv_path}\n  {config.REPORTS_DIR / 'auswahl_vergleich.png'}")
-    print("\n" + df.to_string(index=False))
-    return 0
+    print(f"label-freies agreement (Schwarm-Einigkeit): {agreement(tw):.3f}")
+    for label, (pick, val) in strategies.items():
+        print(f"  {label:20s} -> {pick:10s} ROC-AUC(illustr.)={val:.3f}")
+    hard = {f: bd_b[f]["roc_auc"] for f in config.HARD_FAULTS if f in bd_b}
+    print(f"\nschwere Fehler (Konsens B): " + ", ".join(f"F{f}={v:.3f}" for f, v in hard.items()))
+    print(f"geschrieben: {config.REPORTS_DIR/'results.csv'} + results_per_fault.csv  (Grafiken: make figures)")
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    main()

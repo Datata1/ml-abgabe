@@ -58,6 +58,18 @@ ONSET_TRAINING = 20   # faulty_training: Fehler ab sample > 20
 RANDOM_SEED = 0
 N_RUNS_TOTAL = 500                 # simulationRun reicht von 1..500
 ALL_FAULTS = list(range(1, 21))    # 20 Fehlertypen
+# In der TEP-Literatur als "quasi unbeobachtbar" bekannt (kaum von Gutdaten unterscheidbar).
+HARD_FAULTS = [3, 9, 15]
 # Repräsentative Auswahl für schnelle Demos: leicht (1,2,6), mittel/schwer (4,11,13), schwer (3,9,15)
 DEMO_FAULTS = [1, 2, 4, 6, 11, 13, 3, 9, 15]
 DEFAULT_CONTAMINATION = 0.1        # Annahme für Threshold-Quantil (PyOD-Default)
+
+# --- Experiment-Setup ----------------------------------------------------------------
+# EIN Setup für Notebook, run_experiment, make_figures und precompute — alle Zahlen des
+# Vortrags stammen aus demselben Split (alle 20 Fehlertypen, damit die Auswertung nicht
+# nur die leichten Fehler zeigt und zu optimistisch wird).
+SPLIT_KW = dict(
+    faults=ALL_FAULTS, n_train_good_runs=6, n_test_good_runs=4, n_test_fault_runs=4,
+    seed=RANDOM_SEED,
+)
+WINDOW, STEP, AGGREGATION = 30, 5, "max"   # Fenster-Adapter (ts.windowed_candidate_scores)

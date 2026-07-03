@@ -1,7 +1,7 @@
 [project]
 name = "automl-ad-abgabe"
 version = "1.0.0"
-description = "AutoML für Anomalieerkennung: Modellauswahl ohne Labels (naiv → Consensus → LLM) auf dem Tennessee-Eastman-Prozess"
+description = "AutoML für Anomalieerkennung ohne Labels, zeitbewusst (naiv → Konsens → PyOD ADEngine) auf dem Tennessee-Eastman-Prozess"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
@@ -10,7 +10,6 @@ dependencies = [
     "scikit-learn>=1.5",
     "pyod>=3.6",
     "numba>=0.61",   # explizit: verhindert Rückfall auf uraltes numba (kein py3.13)
-    "optuna>=4.0",
     "matplotlib>=3.9",
     "pyarrow>=17.0",
     "scipy>=1.13",

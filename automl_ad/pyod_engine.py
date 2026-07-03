@@ -1,19 +1,19 @@
-"""Stufe 3 (echte Variante): pyODs eingebaute agentische AutoML-AD.
+"""PyODs eingebaute AutoML-AD (``ADEngine``) — die native, benchmark-gestützte Pipeline.
 
-PyOD 3 liefert mit ``pyod.utils.ad_engine.ADEngine`` eine fertige, **benchmark-gestützte**
-Anomalie-Erkennungs-Pipeline (die „od-expert"-Skill ist die agentische/LLM-Schicht darüber):
+``pyod.utils.ad_engine.ADEngine`` liefert eine fertige, **benchmark-gestützte**
+Anomalie-Erkennungs-Pipeline:
 
 - **profiliert** den Datensatz,
-- **wählt** aus 61 Detektoren benchmark-gestützt (ADBench u. a.) die passenden aus — das ist
-  Meta-Learning aus der Vorlesung (VL06), fertig in der Library,
+- **wählt** aus 60+ Detektoren benchmark-gestützt (ADBench für tabular, TSB-AD für time_series)
+  die passenden aus — Meta-Learning, fertig in der Library,
 - bildet **Multi-Detektor-Consensus** (kontinuierlicher Score, label-frei),
 - liefert **label-freie Qualitätsdiagnostik** (``verdict``/``overall``),
-- kann hinterher mit ``validate(state, y)`` sogar **selbst** gegen echte Labels auswerten
+- kann hinterher mit ``validate(state, y)`` optional gegen echte Labels auswerten
   (Consensus vs. bester Einzeldetektor, inkl. ``consensus_helped``).
 
-Damit ersetzt ADEngine unsere selbstgebaute Stufe 3 (``automl_ad/llm.py``) durch die „echte"
-Variante. ``llm.py`` bleibt als vereinfachte Erklärung erhalten, wie so etwas „unter der Haube"
-funktioniert (Datensatz-Profil + Detektor-Steckbriefe + Reasoning).
+Das **LLM-Routing** ist ebenfalls PyOD-nativ (``plan_detection(llm_client=...)`` +
+``pyod.utils._llm``): PyOD baut Prompt & parst/validiert die Antwort selbst; wir liefern via
+``run_engine_llm_routed`` nur den Provider-Transport (``llm.llm_router``).
 """
 
 from __future__ import annotations
@@ -114,10 +114,13 @@ def run_engine_llm_routed(
     )
     result = engine.run_detection(X_train, plan, X_test=X_test)
 
+    # ``source`` = "llm", wenn PyODs LLM-Plan genutzt wurde; "rule", wenn PyOD wegen ungültiger
+    # LLM-Antwort auf Regel-Routing zurückgefallen ist (Note wird in _plan_via_llm gesetzt).
     return {
         "detector": plan.get("detector_name"),
         "alternatives": [a.get("detector_name") for a in plan.get("alternatives", [])],
         "reason": plan.get("reason"),
+        "source": "llm" if str(plan.get("note", "")).startswith("llm-driven") else "rule",
         "scores_test": np.asarray(result.get("scores_test"), dtype=float),
     }
 

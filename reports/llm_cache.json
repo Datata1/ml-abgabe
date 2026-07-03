@@ -1,0 +1,10 @@
+{
+  "detector": "LOF",
+  "alternatives": [
+    "RGraph",
+    "XGBOD"
+  ],
+  "reason": "A non-parametric method that identifies outliers as points that are surrounded by a low density of neighbors.",
+  "source": "llm",
+  "roc_auc": 0.8829615985576924
+}

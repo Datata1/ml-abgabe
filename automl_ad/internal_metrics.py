@@ -109,22 +109,3 @@ def em_mv_for_detector(
         mvs.append(_mv_auc(axis_alpha, volume_support, s_unif, s_X, n_generated))
 
     return float(np.mean(ems)), float(np.mean(mvs))
-
-
-def select_emmv(candidates, X_train, X_eval, *, criterion: str = "em", **kwargs):
-    """Label-freie Auswahl per interner Metrik (EM oder MV) — analog ``select_internal``.
-
-    ``criterion="em"`` wählt den höchsten EM-Score, ``criterion="mv"`` den niedrigsten MV-Score.
-    Rückgabe: ``(bester_name, {name: (em, mv)})``.
-    """
-    scores = {
-        name: em_mv_for_detector(name, hp, X_train, X_eval, **kwargs)
-        for name, hp in candidates
-    }
-    if criterion == "em":
-        best = max(scores, key=lambda n: scores[n][0])
-    elif criterion == "mv":
-        best = min(scores, key=lambda n: scores[n][1])
-    else:
-        raise ValueError("criterion muss 'em' oder 'mv' sein.")
-    return best, scores
