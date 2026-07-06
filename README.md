@@ -1,9 +1,8 @@
 # AutoML für Anomalieerkennung ohne Labels (Tennessee-Eastman-Prozess)
 
 Leitfrage: **Was tut man in der Outlier Detection, wenn man keine Labels hat?** — die Industrie-
-Realität: man hat **keine** ROC/AUC, die zeigt, wie gut ein Modell Ausreißer trifft. TEP ist eine
-**Zeitreihe** (52 Sensoren, 20 Fehlertypen), daher arbeiten wir durchgängig **zeitbewusst**
-(Fenster-Adapter); der zeilenweise (i.i.d.) Blick ist nur der naive Startpunkt.
+Realität: man hat **keine** ROC/AUC, die zeigt, wie gut ein Modell Ausreißer trifft. Datensatz:
+Tennessee-Eastman-Prozess (52 Sensoren, 20 Fehlertypen).
 
 > ⚠️ TEP *hat* gelabelte Anomalien. ROC/AUC nutzen wir **nur zur Illustration** dessen, was man
 > unüberwacht eben **nicht** hätte. Die real nutzbaren Signale sind **label-frei**: Konsens-Agreement
@@ -11,12 +10,11 @@ Realität: man hat **keine** ROC/AUC, die zeigt, wie gut ein Modell Ausreißer t
 
 ## Roter Faden
 
-1. **Baseline / PyOD** — 4 klassische Detektoren; naiver i.i.d.-Blick → **zeitbewusst** via
-   Fenster-Adapter (`automl_ad/ts.py`).
+1. **Baseline / PyOD** — 4 klassische Detektoren; blinde Einzelwahl ohne Labels ist Glückssache.
 2. **Konsens** (label-frei, `automl_ad/selection.py`) — **Modus A** zentralstes Modell
    (`consensus_centrality`) **oder** **Modus B** Ensemble-Konsens als Vorhersage (`ensemble_consensus`).
 3. **PyOD ADEngine** (`automl_ad/pyod_engine.py`) — native, benchmark-gestützte AutoML-AD
-   (`data_type='time_series'`), inkl. **PyOD-eigenem** LLM-Routing; wir liefern nur den Provider-
+   (`data_type='tabular'`), inkl. **PyOD-eigenem** LLM-Routing; wir liefern nur den Provider-
    Transport (`automl_ad/llm.py`).
 
 **Maßgebliche Doku:** [`docs/jd/`](docs/jd/) (00–03 + `slides.md`).
@@ -47,8 +45,9 @@ make experiment   # reproduzierbare Zahlen -> reports/results.csv
 make test         # schnelle, datenfreie Tests
 ```
 
-**Für die Folien:** `make figures` schreibt 10 slide-fertige PNGs (16:9, weiß, selbst-erklärend) nach
-`reports/figures/` — direkt in PowerPoint ziehen. Dieselben Grafiken zeigt `make present` live.
+**Für die Folien:** `make figures` schreibt 13 slide-fertige PNGs (16:9, weiß, selbst-erklärend) nach
+`reports/figures/` — 9 nummerierte Pipeline-Grafiken + 4 Modell-Steckbriefe (`modell_*.png`, frei
+kombinierbar) — direkt in PowerPoint ziehen. Dieselben Grafiken zeigt `make present` live.
 
 ## Modul-Landkarte
 
@@ -56,10 +55,9 @@ make test         # schnelle, datenfreie Tests
 automl_ad/
   config.py         Pfade, Spalten (52 Features), Onset-Logik, Seeds
   data.py           TEP laden, Run-Level-Split, Onset-Labeling (load_split → Split)
-  detectors.py      4 PyOD-Detektoren (ecod, iforest, ocsvm, pca) + Registry
-  ts.py             ZEITBEWUSST: pro-Run-Fensterung (windowed_scores / windowed_candidate_scores)
+  detectors.py      4 PyOD-Detektoren (knn, pca, hdbscan, iforest) + Registry
   selection.py      Score-Dict-API: consensus_centrality (A), ensemble_consensus (B),
-                    agreement, oracle_best (+ i.i.d.-Wrapper select_internal/select_oracle)
+                    agreement, oracle_best (+ Wrapper select_internal/select_oracle)
   internal_metrics.py  label-freie Detektor-Güte EM/MV (Goix 2016) — Achims Vortragsteil
   pyod_engine.py    PyOD ADEngine (run_engine, run_engine_llm_routed, benchmark_ranking)
   llm.py            Provider-Transport (Claude|Ollama) für PyODs plan_detection(llm_client=…)
@@ -67,7 +65,7 @@ automl_ad/
   figures.py        slide-fertige Grafiken (fig_*), 16:9/weiß/selbst-erklärend
 scripts/            make_figures.py (-> reports/figures/), run_experiment.py, precompute.py
 notebooks/          jd_praesentation.py   (grafik-zentriert)
-reports/figures/    10 PNGs für die Folien
+reports/figures/    13 PNGs für die Folien (9 Pipeline + 4 Modell-Steckbriefe)
 docs/jd/            00_narrativ · 01_baseline · 02_konsens · 03_adengine · slides
 ```
 

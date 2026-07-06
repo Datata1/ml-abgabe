@@ -16,17 +16,6 @@ Das ist keine akademische Spielerei, sondern **Industrie-Realität** (Prozessind
 die einem sagt, wie gut ein Modell die Ausreißer trifft. Genau dieses Fehlen einer Zielmetrik ist das
 Kernproblem, um das sich JDs ganzer Teil dreht.
 
-### Und: wir haben eine **Zeitreihe**
-
-TEP ist kein statischer Tabellen-Datensatz, sondern eine **Zeitreihe** von 52 Sensoren. Ein einzelner
-Messpunkt kann für sich normal aussehen und erst **im zeitlichen Verlauf** (Drift, Trend, veränderte
-Dynamik) anomal sein. Deshalb ist unser Ansatz durchgehend **zeitbewusst**: Wir betrachten nicht
-einzelne Zeilen isoliert, sondern **gleitende Zeitfenster**. Der rein zeilenweise („i.i.d.") Blick
-kommt nur als **naiver Startpunkt** vor — danach sind alle Detektoren über den **TimeSeriesOD-Fenster-
-Adapter** zeitbewusst (siehe [01](01_baseline_pyod.md), Abschnitt „Wie funktioniert Time-Series-
-Awareness?"). **Wichtig:** dieser Adapter ist **kein AutoML** — er macht *einen* Detektor
-zeitreihen-fähig; die AutoML-Schicht ist die **ADEngine** ([03](03_adengine.md)).
-
 ---
 
 ## Die verbindliche ROC/AUC-Regel (gilt auf JEDER Folie)
@@ -73,7 +62,7 @@ Modell **nahezu so gut** auswählen wie mit dem „Lösungsblatt".
   mit dem Lösungsblatt den besten Detektor. Nur **Referenzlinie** („besser geht's nicht"), im echten
   Betrieb **nicht verfügbar** — gehört in den „Wenn wir spicken würden"-Block.
 
-Weitere Begriffe: **Detektor** = ein OD-Modell (ecod, iforest, …). **Score** = Anomaliewert (höher =
+Weitere Begriffe: **Detektor** = ein OD-Modell (knn, iforest, …). **Score** = Anomaliewert (höher =
 anomaler). **Threshold** = Schwelle aus `contamination`. **Consensus** = aggregierter Score/Rang über
 mehrere Detektoren.
 
@@ -81,26 +70,19 @@ mehrere Detektoren.
 
 ## Aufbau von JDs Teil (drei Themen)
 
-1. **Baseline / PyOD als Library + Time-Series-Awareness** (`01`) — Was ist ein Detektor, wie sieht
-   die PyOD-Schnittstelle aus; der naive i.i.d.-Blick; **wie** man Detektoren via Fenster-Adapter
-   zeitbewusst macht (eigene Mechanismus-Erklärung); und warum „einfach eins nehmen" ohne Labels ein
+1. **Baseline / PyOD als Library** (`01`) — Was ist ein Detektor, wie sieht die PyOD-Schnittstelle
+   aus; der naive Startpunkt (fester Detektor); und warum „einfach eins nehmen" ohne Labels ein
    Blindflug ist.
-2. **Konsens** (`02`) — Die elegante label-freie Antwort in **zwei Spielarten**, angewandt auf die
-   **zeitbewussten** Detektoren: (A) das zum Konsens **zentralste einzelne** Modell wählen;
-   (B) den **Konsens-Score eines Ensembles selbst** als Vorhersage nehmen.
+2. **Konsens** (`02`) — Die elegante label-freie Antwort in **zwei Spielarten**: (A) das zum Konsens
+   **zentralste einzelne** Modell wählen; (B) den **Konsens-Score eines Ensembles selbst** als
+   Vorhersage nehmen.
 3. **PyODs ADEngine** (`03`) — Die **fertige, native** AutoML-AD-Pipeline: profiliert, wählt
    benchmark-gestützt (ADBench), bildet Consensus, meldet label-freie Qualität — inklusive PyODs
    **eigener** LLM-Routing-Schicht (kein Eigenbau). Demo im `tabular`-Modus (dort funktioniert sie fair).
 
-> **Time-Series-Awareness** zieht sich durch, ist aber **kein eigenes Thema**: In `01` machen wir die
-> Baselines über den Fenster-Adapter zeitbewusst. PyODs ADEngine erkennt den `data_type` sogar selbst
-> und hätte einen `time_series`-Modus — der wählt aber **Subsequenz**-Detektoren, die zu TEPs
-> **anhaltenden** Fehlern nicht passen. Die richtige Zeitbewusstheit für TEP ist die **Fensterung** aus `01`.
-
 **Übergänge (roter Faden):**
-`01` macht Detektoren zeitbewusst und stellt das Problem (blinde Einzelwahl) → `02` löst es mit
-Konsens über die zeitbewussten Detektoren → `03` zeigt dieselbe Idee **industrialisiert** in einer
-Library (nativer TS-Modus) + optional LLM.
+`01` stellt das Problem (blinde Einzelwahl ohne Labels) → `02` löst es mit Konsens über mehrere
+Detektoren → `03` zeigt dieselbe Idee **industrialisiert** in einer Library + optional LLM.
 
 ---
 
@@ -110,13 +92,14 @@ Library (nativer TS-Modus) + optional LLM.
 - Das schwergewichtige **ADEngine** ist die *ehrliche, reale* AutoML-Variante; dass sie hier den
   einfachen Konsens **nicht** schlägt, ist ein guter Diskussionspunkt (mehr Maschinerie ≠ besser).
 - **Differenziert nach Fehlerart** (alle 20 Fehler, nicht nur die leichten — sonst zu optimistisch):
-  leichte Fehler ≈ 1.0, die „quasi unbeobachtbaren" Fehler **3/9/15** nur ~0.59–0.61. Und: das
-  label-freie ``agreement`` bleibt dort hoch (~0.92) — **Einigkeit ≠ Richtigkeit**; der Schwarm
-  kann einig und trotzdem blind sein. Das ist die ehrliche Grenze der label-freien Signale.
+  leichte Fehler ≈ 1.0, die „quasi unbeobachtbaren" Fehler **3/9/15** nur ~0.56–0.58. Und: das
+  label-freie ``agreement`` ist dort **unauffällig** (~0.73, mitten im Bereich der gut erkannten
+  Fehler) — **Einigkeit ≠ Richtigkeit**; der Schwarm kann einig und trotzdem blind sein. Das ist
+  die ehrliche Grenze der label-freien Signale.
 - Wir **optimieren keine Metrik**, wir zeigen ein **Vorgehen** für den labelfreien Fall.
 
 > Zahlen (nur zur internen Referenz, stets caveaten; ein Lauf über **alle 20 Fehler**):
-> naiv i.i.d. (ecod) 0.805 · Konsens A (pca) 0.903 · Konsens B (avg) 0.903 · ADEngine 0.850 ·
-> ADEngine+LLM (LOF) 0.883 · label-Oracle (ocsvm) 0.910. Pro Fehlerart:
+> naiv (iforest) 0.826 · Konsens A (pca) 0.883 · Konsens B (avg) 0.834 · ADEngine 0.850 ·
+> ADEngine+LLM (LOF) 0.883 · label-Oracle (knn) 0.890. Pro Fehlerart:
 > [`reports/results_per_fault.csv`](../../reports/results_per_fault.csv). Quelle:
 > [`reports/results.csv`](../../reports/results.csv).

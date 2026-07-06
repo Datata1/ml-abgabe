@@ -1,4 +1,4 @@
-"""Interaktive Präsentation (marimo): Outlier Detection OHNE Labels — zeitbewusst.
+"""Interaktive Präsentation (marimo): Outlier Detection OHNE Labels.
 
 **Grafik-zentriert:** jede Zelle = knapper Kontext + eine slide-fertige Grafik (aus ``automl_ad.figures``).
 Dieselben Grafiken schreibt ``make figures`` als PNGs nach ``reports/figures/`` — direkt für die Folien.
@@ -18,8 +18,8 @@ def _():
 
     mo.md(
         """
-        # Outlier Detection **ohne Labels** — zeitbewusst
-        ### Tennessee-Eastman-Prozess (52 Sensoren, Zeitreihe)
+        # Outlier Detection **ohne Labels**
+        ### Tennessee-Eastman-Prozess (52 Sensoren)
 
         Jede Zelle liefert **eine slide-fertige Grafik** (auch als PNG via `make figures`).
         ROC/AUC erscheint nur als markierter „Wenn wir spicken würden"-Block — real hätte man es nicht.
@@ -44,79 +44,70 @@ def _():
         fit_scores,
         per_fault_breakdown,
     )
-    from automl_ad.ts import windowed_candidate_scores
 
     figures.use_slide_style()
     # EIN Setup für alle Zahlen (config.SPLIT_KW): alle 20 Fehlertypen — auch die schweren,
     # sonst wird die Auswertung zu optimistisch.
     split = load_split(**config.SPLIT_KW)
-    WINDOW, STEP, AGG = config.WINDOW, config.STEP, config.AGGREGATION
 
     def _auc(s):
         return float(roc_auc_score(split.y_test, s))
 
-    iid_auc = {n: _auc(s) for n, s in fit_scores(DEFAULT_CANDIDATES, split.X_train_good, split.X_test).items()}
-    tw = windowed_candidate_scores(DEFAULT_CANDIDATES, split, window_size=WINDOW, step=STEP, aggregation=AGG)
-    tw_auc = {n: _auc(s) for n, s in tw.items()}
-    best_a, centrality = consensus_centrality(tw)
-    modeB_auc = {m: _auc(ensemble_consensus(tw, m)) for m in ("average", "maximization", "median")}
+    scores = fit_scores(DEFAULT_CANDIDATES, split.X_train_good, split.X_test)
+    det_auc = {n: _auc(s) for n, s in scores.items()}
+    best_a, centrality = consensus_centrality(scores)
+    modeB_auc = {m: _auc(ensemble_consensus(scores, m)) for m in ("average", "maximization", "median")}
     breakdown = per_fault_breakdown(
-        tw, ensemble_consensus(tw, "average"), split.y_test, split.meta_test["faultNumber"].to_numpy()
+        scores, ensemble_consensus(scores, "average"), split.y_test,
+        split.meta_test["faultNumber"].to_numpy()
     )
-    return (STEP, WINDOW, agreement, best_a, breakdown, centrality, config, figures, iid_auc,
-            modeB_auc, np, split, tw, tw_auc)
+    return (agreement, best_a, breakdown, centrality, config, det_auc, figures,
+            modeB_auc, np, scores, split)
 
 
 @app.cell
-def _(figures, iid_auc, mo):
+def _(figures, mo):
+    # Steckbrief-Karten der vier Baseline-Detektoren (auch einzeln als PNGs via make figures).
+    mo.vstack([
+        mo.md("## Die vier Baseline-Detektoren (kurz vorgestellt)"),
+        mo.hstack([figures.fig_model_card("knn"), figures.fig_model_card("pca")]),
+        mo.hstack([figures.fig_model_card("hdbscan"), figures.fig_model_card("iforest")]),
+    ])
+    return
+
+
+@app.cell
+def _(det_auc, figures, mo):
     mo.vstack([
         mo.md("## 1 — Das Problem: ohne Labels ist die Detektorwahl ein Blindflug"),
-        figures.fig_detector_spread(iid_auc),
+        figures.fig_detector_spread(det_auc),
     ])
     return
 
 
 @app.cell
-def _(WINDOW, STEP, figures, mo, split, tw):
-    mo.vstack([
-        mo.md("## Mechanismus: wie ein Detektor **zeitbewusst** wird (Fenster-Adapter)"),
-        figures.fig_windowing_mechanism(split, tw["pca"], fault=split.faults[0], window=WINDOW, step=STEP),
-    ])
-    return
-
-
-@app.cell
-def _(figures, iid_auc, mo, tw_auc):
-    mo.vstack([
-        mo.md("## Der Effekt: zeitbewusst schlägt den i.i.d.-Blick"),
-        figures.fig_iid_vs_windowed(iid_auc, tw_auc),
-    ])
-    return
-
-
-@app.cell
-def _(config, figures, mo, split, tw):
+def _(config, figures, mo, scores, split):
     mo.vstack([
         mo.md("## Anschauung: Score über die Zeit eines Fehlerlaufs"),
-        figures.fig_score_timeline(split, tw["pca"], fault=split.faults[0], onset=config.ONSET_TESTING),
+        figures.fig_score_timeline(split, scores["pca"], fault=split.faults[0], onset=config.ONSET_TESTING),
     ])
     return
 
 
 @app.cell
-def _(agreement, best_a, centrality, figures, mo, tw):
+def _(agreement, best_a, centrality, figures, mo, scores):
     mo.vstack([
         mo.md("## 2 — Konsens · Modus A: das zentralste Modell (label-frei)"),
-        figures.fig_consensus(tw, centrality, best_a, agreement(tw)),
+        figures.fig_consensus(scores, centrality, best_a, agreement(scores)),
     ])
     return
 
 
 @app.cell
-def _(figures, mo, modeB_auc, tw_auc):
+def _(det_auc, figures, mo, modeB_auc):
     mo.vstack([
         mo.md("## Konsens · Modus B: das Ensemble ist die Vorhersage"),
-        figures.fig_ensemble(modeB_auc, max(tw_auc.values())),
+        figures.fig_ensemble(modeB_auc, max(det_auc.values())),
     ])
     return
 
@@ -173,11 +164,10 @@ def _(config, figures, mo):
 
 
 @app.cell
-def _(best_a, engine_out, figures, iid_auc, llm_cache, mo, modeB_auc, tw_auc):
-    _naiv = min(iid_auc, key=iid_auc.get)
+def _(best_a, det_auc, engine_out, figures, llm_cache, mo, modeB_auc):
     strategies = {
-        "naiv (i.i.d.)": (_naiv, iid_auc[_naiv]),
-        "Konsens A": (best_a, tw_auc[best_a]),
+        "naiv (fix iforest)": ("iforest", det_auc["iforest"]),
+        "Konsens A": (best_a, det_auc[best_a]),
         "Konsens B (avg)": ("ensemble", modeB_auc["average"]),
     }
     _ev = engine_out.get("validation") or {}
@@ -187,7 +177,7 @@ def _(best_a, engine_out, figures, iid_auc, llm_cache, mo, modeB_auc, tw_auc):
         strategies["ADEngine\n+ LLM"] = (llm_cache.get("detector"), float(llm_cache["roc_auc"]))
     mo.vstack([
         mo.md("## Fazit — alle Strategien im Vergleich (ohne Labels ≈ Oracle)"),
-        figures.fig_final_comparison(strategies, max(tw_auc.values())),
+        figures.fig_final_comparison(strategies, max(det_auc.values())),
     ])
     return
 

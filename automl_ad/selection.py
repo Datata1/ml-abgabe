@@ -4,8 +4,7 @@ Roter Faden: *Wie wählt/kombiniert man ohne Labels?* Kernidee: nicht ein einzel
 Wahrheit, aber der **Konsens** vieler Modelle ist robust.
 
 Die Kernfunktionen arbeiten auf einem ``scores``-Dict ``{detektorname: score_vektor}`` und sind damit
-unabhängig davon, **wie** die Scores entstanden sind — i.i.d. (:func:`fit_scores`) oder zeitbewusst
-(:func:`automl_ad.ts.windowed_candidate_scores`):
+unabhängig davon, **wie** die Scores entstanden sind (Producer: :func:`fit_scores`):
 
 - :func:`consensus_centrality` — **Modus A**: wähle das zum Konsens zentralste **eine** Modell.
 - :func:`ensemble_consensus`  — **Modus B**: der Konsens-Score eines **Ensembles** ist die Vorhersage.
@@ -13,7 +12,7 @@ unabhängig davon, **wie** die Scores entstanden sind — i.i.d. (:func:`fit_sco
 - :func:`per_fault_breakdown` — differenzierte Auswertung pro Fehlertyp (AUC + agreement je Fehler).
 - :func:`oracle_best`         — label-**basierte** Obergrenze (nur Referenz; real nicht verfügbar).
 
-Die dünnen Wrapper :func:`select_internal` / :func:`select_oracle` bündeln „i.i.d. fitten + auswählen"
+Die dünnen Wrapper :func:`select_internal` / :func:`select_oracle` bündeln „fitten + auswählen"
 für den naiven Startpunkt.
 """
 
@@ -30,10 +29,10 @@ Candidate = tuple[str, dict]
 Scores = dict[str, np.ndarray]
 
 DEFAULT_CANDIDATES: list[Candidate] = [
-    ("ecod", {}),
-    ("iforest", {}),
-    ("ocsvm", {}),
+    ("knn", {}),
     ("pca", {}),
+    ("hdbscan", {}),
+    ("iforest", {}),
 ]
 
 # Ensemble-Kombinatoren (identisch zu pyod.models.combination, aber ohne die optionale
@@ -46,7 +45,7 @@ _COMBINERS = {
 
 
 def fit_scores(candidates: list[Candidate], X_train, X_eval) -> Scores:
-    """i.i.d.-Producer: fittet alle Kandidaten auf Gutdaten, gibt ihre Eval-Scores zurück."""
+    """Score-Producer: fittet alle Kandidaten auf Gutdaten, gibt ihre Eval-Scores zurück."""
     return {
         name: make_detector(name, **hp).fit(X_train).decision_function(X_eval)
         for name, hp in candidates
@@ -133,13 +132,13 @@ def oracle_best(scores: Scores, y) -> tuple[str, dict[str, float]]:
 
 
 # --------------------------------------------------------------------------------------
-# Dünne i.i.d.-Wrapper (naiver Startpunkt: fitten + auswählen in einem Aufruf)
+# Dünne Wrapper (naiver Startpunkt: fitten + auswählen in einem Aufruf)
 # --------------------------------------------------------------------------------------
 def select_internal(candidates, X_train, X_eval) -> tuple[str, dict[str, float]]:
-    """i.i.d.-Bequemlichkeit: ``consensus_centrality(fit_scores(...))`` (Modus A)."""
+    """Bequemlichkeit: ``consensus_centrality(fit_scores(...))`` (Modus A)."""
     return consensus_centrality(fit_scores(candidates, X_train, X_eval))
 
 
 def select_oracle(candidates, X_train, X_val, y_val) -> tuple[str, dict[str, float]]:
-    """i.i.d.-Bequemlichkeit: ``oracle_best(fit_scores(...), y_val)`` (label-Obergrenze)."""
+    """Bequemlichkeit: ``oracle_best(fit_scores(...), y_val)`` (label-Obergrenze)."""
     return oracle_best(fit_scores(candidates, X_train, X_val), y_val)

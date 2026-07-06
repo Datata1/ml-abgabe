@@ -34,14 +34,19 @@ bräuchte man Labels.
 ## Unsere vier Baseline-Detektoren
 
 Wir bleiben bewusst schlank: vier klassische, dependency-leichte Detektoren (kein torch/Deep
-Learning), registriert in [detectors.py](../../automl_ad/detectors.py#L62-L67):
+Learning), registriert in [detectors.py](../../automl_ad/detectors.py):
 
 | Detektor | Grundidee in einem Satz | Stärke | Schwäche |
 |----------|--------------------------|--------|----------|
-| **ecod** | Rein statistisch: wie unwahrscheinlich ist jeder Messwert laut empirischer Verteilung? (parameterfrei) | schnell, robust, keine Tuning-Knöpfe | ignoriert **Korrelationen** zwischen Features |
-| **iforest** | Isolation Forest: Anomalien lassen sich mit wenigen zufälligen Schnitten isolieren | Allrounder, skaliert gut | schwach bei feinen Dichte-Anomalien |
-| **pca** | Findet die normale „Hauptebene"; was weit von ihr rekonstruiert wird, ist anomal | nutzt **lineare Kopplung** (ideal für gekoppelte Sensoren) | nur lineare Struktur |
-| **ocsvm** | Zieht eine (krumme) Hülle um die Normaldaten; außerhalb = anomal | nichtlineare Grenzen | langsam, empfindlich bei `nu`/`gamma` |
+| **knn** | Score = Abstand zum k-nächsten Nachbarn: wer weit weg von allen liegt, ist anomal | einfach, lokal sensitiv, ADBench-Top (#4) | Distanzsuche kostet; hohe Dimensionen verwässern Distanzen |
+| **pca** | Findet die normale „Hauptebene"; was weit von ihr rekonstruiert wird, ist anomal | nutzt **lineare Kopplung** (ideal für gekoppelte Sensoren), sehr schnell | nur lineare Struktur |
+| **hdbscan** | Dichte-Clustering: Punkte in dünn besiedelten Regionen sind Ausreißer (GLOSH-Score) | findet Cluster beliebiger Form, keine Cluster-Anzahl nötig | empfindlich auf `min_cluster_size`; neue Punkte nur approximativ gescort |
+| **iforest** | Isolation Forest: Anomalien lassen sich mit wenigen zufälligen Schnitten isolieren | robuster Allrounder, skaliert linear, ADBench-Top (#3) | achsenparallele Schnitte übersehen korrelierte Features |
+
+**Für die Vorstellungs-Folie:** `make figures` erzeugt je Detektor eine **Steckbrief-Karte**
+(`reports/figures/modell_*.png`): links die echte Score-Landschaft des Detektors auf
+2D-Beispieldaten (derselbe Code wie in der Pipeline), rechts Mechanik/Stärke/Schwäche in drei
+Stichpunkten — frei auf Folien kombinierbar.
 
 **Registry-Nutzung:** `make_detector("pca")` erzeugt den Detektor über eine
 Namens→Factory-Tabelle. Jede spätere Auswahlstrategie spricht nur gegen das Protokoll und ist damit
@@ -49,75 +54,23 @@ Namens→Factory-Tabelle. Jede spätere Auswahlstrategie spricht nur gegen das P
 
 ---
 
-## Der naive Startpunkt: ein fixer Detektor, zeilenweise (i.i.d.)
+## Der naive Startpunkt: ein fixer Detektor
 
-Die simpelste Strategie: **immer denselben** Detektor nehmen (z. B. `ecod`) und ihn **zeilenweise**
-auf jeden Messzeitpunkt anwenden. Das ist doppelt naiv:
+Die simpelste Strategie: **immer denselben** Detektor nehmen — z. B. `iforest`, den populären
+„Standard-Griff". Das ist naiv, denn die Modellwahl ist **blind** — der Name steht hart im Code;
+ohne Labels weiß man nicht, ob er passt.
 
-1. **Blinde Modellwahl** — der Name steht hart im Code; ohne Labels weiß man nicht, ob er passt.
-2. **Blind gegenüber der Zeit** — jede Zeile wird **isoliert** (i.i.d.) betrachtet, die zeitliche
-   Struktur (Fenster, Verlauf) wird ignoriert.
+> ⚠️ *Illustration mit TEP-Labels (real nicht verfügbar):* Die Detektoren streuen deutlich
+> (Quelle [`reports/results.csv`](../../reports/results.csv)): knn **0.890**, pca **0.883**,
+> iforest **0.826**, hdbscan **0.757**. „Nimm einfach iforest" ist also **Glückssache** — hier
+> nur Mittelfeld, und der blinde Griff zu hdbscan wäre deutlich schlechter.
 
-> ⚠️ *Illustration mit TEP-Labels (real nicht verfügbar):* Schon der zeilenweise Blick streut stark
-> je nach Detektor (Quelle [`reports/results.csv`](../../reports/results.csv)): ecod **0.767**,
-> iforest ~0.79, pca **0.845**, ocsvm ~0.846. „Nimm einfach ecod" ist also **Glückssache** — hier
-> sogar Pech.
+Das fixen wir über die **Konsens-Auswahl** (`02`/`03`).
 
-Beides fixen wir: die **Modellwahl** über Konsens (`02`/`03`), die **Zeit-Blindheit** ab jetzt über
-den Fenster-Adapter.
-
----
-
-## Wie funktioniert Time-Series-Awareness? (der Fenster-Adapter)
-
-> **Das ist die zentrale Mechanismus-Folie.** Ziel: Publikum versteht, wie aus einem gewöhnlichen
-> PyOD-Detektor ein **zeitbewusster** wird — ohne ein neues Modell zu erfinden.
-
-PyOD liefert dafür **`TimeSeriesOD`** ([ts_od.py](../../.venv/lib/python3.13/site-packages/pyod/models/ts_od.py)):
-einen **Adapter** (keine neue Lernmethode!), der **einen beliebigen** PyOD-Detektor zeitreihen-fähig
-macht. In vier Schritten:
-
-1. **Fenstern:** Aus der Sensor-Zeitreihe werden **überlappende Fenster** der Länge `window_size`
-   geschnitten (Schrittweite `step`). Jedes Fenster der Form `(window_size × n_sensoren)` wird zu
-   **einer** Zeile „flachgeklopft". → aus *Verlauf* wird ein *Merkmalsvektor*.
-2. **Detektor auf Fenstern:** Der gewählte Detektor (ecod/iforest/…) lernt/scored nun auf der
-   **Fenster-Matrix** statt auf Einzelpunkten. Er sieht damit **Dynamik**, nicht nur Momentaufnahmen.
-3. **Zurückmappen:** Jeder Fenster-Score wird auf die enthaltenen Zeitstempel zurückgeführt und dort
-   **aggregiert** (`max` = „ein verdächtiges Fenster reicht", oder `mean`).
-4. **Ergebnis:** ein Anomalie-Score **pro Zeitstempel** — gleiche Schnittstelle wie vorher, nur eben
-   **zeitbewusst**.
-
-```
-Sensor-Zeitreihe (T × 52)
-        │  sliding_windows(window_size, step)
-        ▼
-Fenster-Matrix (n_fenster × window_size·52) ── Detektor.fit/score ──► Fenster-Scores
-        │  map_scores_to_timestamps(max/mean)
-        ▼
-Score pro Zeitstempel (T)
-```
-
-**Zwei wichtige Hinweise (kommen im Notebook konkret vor):**
-- **Multivariat:** alle 52 Sensoren stecken im Fenster — Kopplungen über Sensoren *und* Zeit werden
-  erfasst.
-- **Pro Lauf fenstern:** Fenster dürfen **keine Run-Grenzen** überschreiten. TEP besteht aus vielen
-  Simulationsläufen; wir fenstern **je `simulationRun`** getrennt (sonst „klebt" das Ende eines Laufs
-  an den Anfang des nächsten).
-
-> **Merksatz:** `TimeSeriesOD` ist ein **Adapter**, **kein AutoML**. Er wählt kein Modell aus — das
-> tut erst die ADEngine (`03`).
-
----
-
-## Die zeitbewussten Baselines
-
-Ab hier sind „unsere vier Detektoren" immer `TimeSeriesOD(detector="ecod"|"iforest"|"ocsvm"|"pca")`.
 Anschaulich im Notebook:
 
-- **Score-Zeitreihe eines Fehlerlaufs** ([`plots.score_timeseries`](../../automl_ad/plots.py)): der
-  gefensterte Score steigt nach dem Fehler-Onset über die Schwelle — genau das Prozessindustrie-Bild
-  (Anlage läuft → Störung → Alarm).
-- **Score-Histogramm** normal vs. anomal (*nur zur Illustration mit Labels*) + Threshold-Linie.
+- **Score-Zeitreihe eines Fehlerlaufs**: der Score steigt nach dem Fehler-Onset über die Schwelle —
+  genau das Prozessindustrie-Bild (Anlage läuft → Störung → Alarm).
 
 ---
 
@@ -126,8 +79,8 @@ Anschaulich im Notebook:
 Damit die Folie nicht mit „man weiß nichts" endet, verweisen wir auf das **label-freie** Ersatzsignal,
 das dein Teil trägt:
 
-- **Konsens-Agreement** (Vorschau `02`): Übereinstimmung der (zeitbewussten) Detektoren als
-  Vertrauensmaß — ganz ohne Labels.
+- **Konsens-Agreement** (Vorschau `02`): Übereinstimmung der Detektoren als Vertrauensmaß — ganz
+  ohne Labels.
 
 *(Eine weitere, geometrische label-freie Güte — EM/MV — stellt **Achim** vor; hier nicht dein Thema.)*
 
@@ -135,6 +88,6 @@ das dein Teil trägt:
 
 ## Übergang zu Thema 2
 
-> „Ein fixer Detektor ist ein Blindflug — auch der zeitbewusste. Aber ich habe ja **viele**
-> (zeitbewusste) Detektoren in PyOD — kann ich die nicht **zusammen** befragen, statt blind einen zu
-> wählen? Genau das macht der *Konsens*." → weiter in [02_konsens.md](02_konsens.md)
+> „Ein fixer Detektor ist ein Blindflug. Aber ich habe ja **viele** Detektoren in PyOD — kann ich
+> die nicht **zusammen** befragen, statt blind einen zu wählen? Genau das macht der *Konsens*."
+> → weiter in [02_konsens.md](02_konsens.md)

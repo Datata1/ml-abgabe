@@ -72,4 +72,3 @@ SPLIT_KW = dict(
     faults=ALL_FAULTS, n_train_good_runs=6, n_test_good_runs=4, n_test_fault_runs=4,
     seed=RANDOM_SEED,
 )
-WINDOW, STEP, AGGREGATION = 30, 5, "max"   # Fenster-Adapter (ts.windowed_candidate_scores)

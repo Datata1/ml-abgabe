@@ -1,4 +1,4 @@
-"""Selektions-Tests: Score-Dict-API (schnell, ohne Daten) + i.i.d.-Wrapper (Marker ``data``)."""
+"""Selektions-Tests: Score-Dict-API (schnell, ohne Daten) + Wrapper (Marker ``data``)."""
 
 from __future__ import annotations
 

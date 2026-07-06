@@ -28,12 +28,12 @@ state  = engine.investigate(X, data_type="tabular", priority="balanced")
 ```
 
 > **Warum tabular?** Wir demonstrieren die ADEngine im **tabular**-Modus (Detektoren aus **ADBench**:
-> IForest/ECOD/KNN). Der `time_series`-Modus wählt **Subsequenz**-Detektoren (KShape, MatrixProfile),
-> die **seltene Discords** suchen — TEP-Fehler sind aber **anhaltende Regimewechsel** (nach Onset ist
-> fast alles anomal). Deshalb passt der Subsequenz-Ansatz hier nicht (Verdikt *low*, ROC-AUC ~0.46);
-> **die richtige Zeitbewusstheit für TEP ist die Fensterung aus [01](01_baseline_pyod.md)** (Punkt-
-> Detektor auf Fenstern), nicht Subsequenz-AD. Wir **erwähnen** den TS-Modus (er ist da), zeigen die
-> Zahlen aber im tabular-Modus, wo die Engine fair funktioniert.
+> IForest/ECOD/KNN) — konsistent zu unserem eigenen Setup (punktweise Detektion). Der
+> `time_series`-Modus wählt **Subsequenz**-Detektoren (KShape, MatrixProfile), die **seltene
+> Discords** suchen — TEP-Fehler sind aber **anhaltende Regimewechsel** (nach Onset ist fast alles
+> anomal). Deshalb passt der Subsequenz-Ansatz hier nicht (Verdikt *low*, ROC-AUC ~0.46). Wir
+> **erwähnen** den TS-Modus (er ist da), zeigen die Zahlen aber im tabular-Modus, wo die Engine fair
+> funktioniert.
 
 `investigate` durchläuft vier Phasen (auch einzeln aufrufbar: `start → plan → run → analyze`):
 
@@ -140,8 +140,7 @@ beste Einzeldetektor (`consensus_helped`). Das gehört strikt in den **„Wenn w
 > **IForest + ECOD + KNN**, label-freie Qualität **„medium" (~0.64)**, Consensus-ROC-AUC **~0.85** —
 > ein faires, sinnvolles Ergebnis. Der **time_series**-Modus dagegen wählt Subsequenz-Detektoren
 > (KShape …) und liefert auf TEP **Verdikt *low* / ROC-AUC ~0.46** — ehrlicher Befund: diese
-> Verfahren passen nicht zu **anhaltenden** Fehlern; die gefensterte Zeitbewusstheit aus [01](01_baseline_pyod.md)
-> ist der bessere Weg.
+> Verfahren passen nicht zu **anhaltenden** Fehlern.
 
 ---
 
@@ -274,7 +273,7 @@ Code: [`llm._ROUTING_SCHEMA`](../../automl_ad/llm.py). **Wichtig:** das fixt die
 
 ## Fazit dieses Teils
 
-Die ADEngine ist die **industrialisierte** Konsens-Idee: sie profiliert (erkennt die Zeitreihe selbst,
-wir geben `data_type` trotzdem explizit mit), wählt benchmark-gestützt, bildet Consensus und bewertet
+Die ADEngine ist die **industrialisierte** Konsens-Idee: sie profiliert (erkennt den `data_type`
+selbst, wir geben ihn trotzdem explizit mit), wählt benchmark-gestützt, bildet Consensus und bewertet
 sich **label-frei** selbst. Das LLM ist optional nur der *belesene Auswähler* über der Benchmark —
 alles andere bleibt PyOD.

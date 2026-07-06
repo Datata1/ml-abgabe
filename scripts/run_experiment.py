@@ -1,4 +1,4 @@
-"""Reproduzierbare Zahlen (zeitbewusst, ALLE 20 Fehlertypen): Baselines, Konsens A/B, Oracle
+"""Reproduzierbare Zahlen (ALLE 20 Fehlertypen): Baselines, Konsens A/B, Oracle
 → ``reports/results.csv`` + differenzierte Pro-Fehler-Auswertung → ``reports/results_per_fault.csv``.
 
 Für die **Grafiken** (Folien) siehe ``scripts/make_figures.py`` / ``make figures``. Alle ROC/AUC sind
@@ -20,12 +20,12 @@ from automl_ad.selection import (
     agreement,
     consensus_centrality,
     ensemble_consensus,
+    fit_scores,
     oracle_best,
     per_fault_breakdown,
 )
-from automl_ad.ts import windowed_candidate_scores
 
-NAIVE = "ecod"
+NAIVE = "iforest"  # der typische "Standard-Griff" ohne Labels
 
 
 def main() -> None:
@@ -35,19 +35,16 @@ def main() -> None:
     def auc(scores):
         return float(roc_auc_score(y, scores))
 
-    # Zeitbewusste Detektor-Scores (einmal), darauf alle label-freien Strategien.
-    tw = windowed_candidate_scores(
-        DEFAULT_CANDIDATES, split,
-        window_size=config.WINDOW, step=config.STEP, aggregation=config.AGGREGATION,
-    )
-    best_a, _ = consensus_centrality(tw)
-    ens = ensemble_consensus(tw, "average")
-    oracle_pick, oracle_aucs = oracle_best(tw, y)
+    # Detektor-Scores (einmal), darauf alle label-freien Strategien.
+    scores = fit_scores(DEFAULT_CANDIDATES, split.X_train_good, split.X_test)
+    best_a, _ = consensus_centrality(scores)
+    ens = ensemble_consensus(scores, "average")
+    oracle_pick, oracle_aucs = oracle_best(scores, y)
 
     strategies = {
-        "naiv (fix ecod, zeitbewusst)": (NAIVE, auc(tw[NAIVE])),  # blinde Einzelwahl, gefenstert
-        "Konsens A": (best_a, auc(tw[best_a])),            # zentralstes Modell (label-frei)
-        "Konsens B (avg)": ("ensemble", auc(ens)),         # Ensemble-Konsens als Vorhersage
+        "naiv (fix iforest)": (NAIVE, auc(scores[NAIVE])),  # blinde Einzelwahl
+        "Konsens A": (best_a, auc(scores[best_a])),         # zentralstes Modell (label-frei)
+        "Konsens B (avg)": ("ensemble", auc(ens)),          # Ensemble-Konsens als Vorhersage
         "Oracle (Referenz)": (oracle_pick, oracle_aucs[oracle_pick]),
     }
 
@@ -60,8 +57,8 @@ def main() -> None:
 
     # Differenzierte Auswertung: wie verändert sich das Ergebnis mit der Fehlerart?
     fault_no = split.meta_test["faultNumber"].to_numpy()
-    bd_b = per_fault_breakdown(tw, ens, y, fault_no)
-    bd_a = per_fault_breakdown(tw, tw[best_a], y, fault_no)
+    bd_b = per_fault_breakdown(scores, ens, y, fault_no)
+    bd_a = per_fault_breakdown(scores, scores[best_a], y, fault_no)
     with (config.REPORTS_DIR / "results_per_fault.csv").open("w", newline="") as fh:
         w = csv.writer(fh)
         w.writerow(["fault", "schwer", "roc_auc_konsens_a", "roc_auc_konsens_b", "agreement"])
@@ -72,7 +69,7 @@ def main() -> None:
                 f"{bd_b[f]['agreement']:.4f}",
             ])
 
-    print(f"label-freies agreement (Schwarm-Einigkeit): {agreement(tw):.3f}")
+    print(f"label-freies agreement (Schwarm-Einigkeit): {agreement(scores):.3f}")
     for label, (pick, val) in strategies.items():
         print(f"  {label:20s} -> {pick:10s} ROC-AUC(illustr.)={val:.3f}")
     hard = {f: bd_b[f]["roc_auc"] for f in config.HARD_FAULTS if f in bd_b}

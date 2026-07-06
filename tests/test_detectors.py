@@ -8,14 +8,14 @@ import pytest
 from automl_ad.data import load_split
 from automl_ad.detectors import available_detectors, make_detector
 
-CORE_DETECTORS = ["ecod", "iforest", "ocsvm", "pca"]
+CORE_DETECTORS = ["knn", "pca", "hdbscan", "iforest"]
 
 
 @pytest.mark.data
 @pytest.mark.parametrize("name", CORE_DETECTORS)
 def test_detector_contract(name):
     s = load_split(faults=[1], n_train_good_runs=3, n_test_good_runs=2, n_test_fault_runs=2, seed=0)
-    # Kleines Trainings-Subsample für Tempo (z. B. OCSVM).
+    # Kleines Trainings-Subsample für Tempo (z. B. KNN/HDBSCAN).
     det = make_detector(name).fit(s.X_train_good[:1200])
     scores = det.decision_function(s.X_test)
     assert scores.shape[0] == s.X_test.shape[0]

@@ -13,9 +13,9 @@ from collections.abc import Callable
 from typing import Protocol, runtime_checkable
 
 import numpy as np
-from pyod.models.ecod import ECOD
+from pyod.models.hdbscan import HDBSCAN
 from pyod.models.iforest import IForest
-from pyod.models.ocsvm import OCSVM
+from pyod.models.knn import KNN
 from pyod.models.pca import PCA
 
 from . import config
@@ -39,31 +39,32 @@ def make_iforest(**hp):
     return IForest(**params)
 
 
-def make_ocsvm(**hp):
-    params = {"contamination": config.DEFAULT_CONTAMINATION}
-    params.update(hp)
-    return OCSVM(**params)
-
-
 def make_pca(**hp):
     params = {"random_state": config.RANDOM_SEED, "contamination": config.DEFAULT_CONTAMINATION}
     params.update(hp)
     return PCA(**params)
 
 
-def make_ecod(**hp):
-    # ECOD ist parameterfrei (außer contamination) — robuster, statistischer Default-Anker.
+def make_knn(**hp):
+    # Score = Abstand zum k-nächsten Nachbarn (Standard: k=5, method='largest').
+    params = {"contamination": config.DEFAULT_CONTAMINATION, "n_jobs": -1}
+    params.update(hp)
+    return KNN(**params)
+
+
+def make_hdbscan(**hp):
+    # Dichte-basiert (GLOSH-Outlier-Score); scored neue Punkte über approximate_predict.
     params = {"contamination": config.DEFAULT_CONTAMINATION}
     params.update(hp)
-    return ECOD(**params)
+    return HDBSCAN(**params)
 
 
 # Registry: name -> factory(**hyperparams) -> Detector
 REGISTRY: dict[str, Callable] = {
-    "ecod": make_ecod,
-    "iforest": make_iforest,
-    "ocsvm": make_ocsvm,
+    "knn": make_knn,
     "pca": make_pca,
+    "hdbscan": make_hdbscan,
+    "iforest": make_iforest,
 }
 
 

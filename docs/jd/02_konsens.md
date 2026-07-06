@@ -3,10 +3,6 @@
 > Zweites Thema von JD und das **Highlight**. Kernidee: Kein einzelnes Modell ist „die Wahrheit", aber
 > die **Übereinstimmung vieler Modelle** ist ein robustes, **label-freies** Signal. Es gibt **zwei
 > Spielarten**. Hält die [Narrativ-Regeln](00_narrativ.md) ein.
->
-> ℹ️ **Kontext:** Alles hier läuft auf den **zeitbewussten** Detektoren aus [01](01_baseline_pyod.md)
-> (`TimeSeriesOD(detector=…)`, pro Run gefenstert). „Detektor" heißt ab jetzt immer „gefensterter
-> Detektor"; die Scores sind Anomalie-Scores **pro Zeitstempel**.
 
 ---
 
@@ -45,11 +41,15 @@ best = max(centrality, key=centrality.get)                   # Schritt 4
 ```
 
 **Ergebnis (caveated):**
-> ⚠️ *ROC/AUC nur zur Illustration — real nicht verfügbar.* Konsens wählt **pca**; das entspricht
-> **0.845** = exakt der label-Obergrenze — **ohne einen einzigen Label**. Das ist die Kernaussage.
+> ⚠️ *ROC/AUC nur zur Illustration — real nicht verfügbar.* Konsens wählt **pca** (**0.883**) —
+> praktisch auf Höhe der label-Obergrenze (knn, 0.890), **ohne einen einzigen Label**. Das ist
+> die Kernaussage.
 
 **Was man wirklich hat (label-frei):** die **Centrality-Werte selbst** (welcher Detektor ist
 Mainstream, welcher Außenseiter) und das **Agreement** (wie einig ist der Schwarm überhaupt).
+Hier konkret: die Centrality **entlarvt hdbscan als Außenseiter** (0.81 vs. 0.93–0.97 der
+anderen) — und tatsächlich ist hdbscan mit 0.757 der schwächste Detektor. Das label-freie Signal
+zeigt also in die richtige Richtung.
 
 ---
 
@@ -75,7 +75,9 @@ und **LSCP** als eigene Detektoren (hier nicht nötig).
 **Ergebnis (caveated):**
 > ⚠️ *ROC/AUC nur zur Illustration.* Der gemittelte Ensemble-Score liefert eine **stabile**
 > Vorhersage, die nicht von der (ungewissen) Wahl eines Einzeldetektors abhängt — der Preis ist, dass
-> ein sehr guter Einzeldetektor „verwässert" werden kann.
+> ein schwacher Außenseiter das Mittel „verwässert". Genau das passiert hier: average **0.834**,
+> weil hdbscan (0.757) mit hineingemittelt wird — Modus A (auswählen statt mitteln) ist auf diesem
+> Setup die bessere Konsens-Spielart.
 
 ---
 

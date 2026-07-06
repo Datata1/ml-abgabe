@@ -59,7 +59,7 @@ class Split:
     X_test: np.ndarray                # gemischt (normal + Fehler), skaliert
     y_test: np.ndarray                # punktweises Label (1=anomal, Onset-korrekt)
     meta_test: pd.DataFrame           # faultNumber/simulationRun/sample (für Detection-Delay etc.)
-    meta_train: pd.DataFrame          # dito für die Trainings-Gutdaten (für pro-Run-Fensterung, ts.py)
+    meta_train: pd.DataFrame          # dito für die Trainings-Gutdaten
     scaler: StandardScaler
     faults: list[int]                 # im Test enthaltene Fehlertypen
     train_runs: list[int]             # Gutdaten-Läufe im Training (für disjunkte Validierung)
